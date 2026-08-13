@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@godaravikas/opencode-vacuum",
+  "version": "0.1.0",
+  "description": "Supercharge OpenCode session management with intuitive multi-select, bulk actions, and effortless cleanup",
+  "license": "MIT",
+  "author": "Vikas Godara <https://github.com/godaravikas>",
+  "homepage": "https://github.com/godaravikas/opencode-vacuum#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/godaravikas/opencode-vacuum.git"
+  },
+  "bugs": {
+    "url": "https://github.com/godaravikas/opencode-vacuum/issues"
+  },
+  "type": "module",
+  "main": "dist/vacuum.js",
+  "exports": {
+    ".": "./dist/vacuum.js",
+    "./tui": "./dist/vacuum.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "session",
+    "tui"
+  ],
+  "scripts": {
+    "build": "bun build src/vacuum.ts --outdir dist --target bun --external @opencode-ai/plugin --external @opencode-ai/sdk --external solid-js --external @opentui/solid --external @opentui/core --external @opentui/keymap",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src/__tests__",
+    "test:coverage": "bun test --coverage src/__tests__"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.18.16",
+    "@opencode-ai/sdk": ">=1.18.16"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.16",
+    "@opencode-ai/sdk": "^1.18.16",
+    "@opentui/core": "^0.5.1",
+    "@opentui/keymap": "^0.5.1",
+    "@opentui/solid": "^0.5.1",
+    "bun-types": "latest",
+    "solid-js": "^1.9.0",
+    "typescript": "^5.8.0"
+  }
+}

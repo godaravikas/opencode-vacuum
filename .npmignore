@@ -1,0 +1,7 @@
+src/
+tsconfig.json
+openspec/
+docs/
+node_modules/
+*.tgz
+bun.lock
