@@ -7,6 +7,7 @@ import { For, Show, createMemo } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import { SessionRow, calcCols } from "./SessionRow.js"
 import { shortDir } from "../utils.js"
+import pkg from "../../package.json"
 interface Props {
   api: TuiPluginApi
   list: DbSession[]
@@ -51,8 +52,9 @@ export function SessionManager(props: Props) {
         <text fg={theme().accent}>{filterLabel()}</text>
         <box flexGrow={1} />
         <Show when={props.deleting}>
-          <text fg={theme().warning}>Deleting...</text>
+          <text fg={theme().warning}>Deleting...  </text>
         </Show>
+        <text fg={theme().textMuted}>v{pkg.version}</text>
       </box>
 
       <box flexShrink={0} border={["bottom"]} borderColor={theme().border} />

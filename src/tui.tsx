@@ -3,7 +3,7 @@
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { Database } from "bun:sqlite"
-import { createSignal, createMemo, createEffect } from "solid-js"
+import { createSignal, createMemo, createEffect, on } from "solid-js"
 import { SessionManager } from "./components/SessionManager.js"
 import { clampCursor, toggleSetItem, toggleAllItems, shortDir } from "./utils.js"
 
@@ -91,6 +91,11 @@ export const tui: TuiPlugin = async (api) => {
   // scrollbox ref as a signal so createEffect can react when it mounts/remounts
   const [scrollBox, setScrollBox] = createSignal<ScrollBoxRenderable | undefined>(undefined)
 
+  // When the scrollbox ref is set (or replaced on remount), do nothing extra —
+  // mouse scroll moves the viewport freely and independently of the cursor.
+  // We only need to re-apply the cursor's scroll position if the scrollbox is
+  // remounted (which resets scrollTop to 0), handled by the effect below.
+
   const currentDir = () => api.state.path.directory
 
   const list = createMemo<DbSession[]>(() => {
@@ -101,32 +106,27 @@ export const tui: TuiPlugin = async (api) => {
     return all.filter((s) => sessionDir(s) === mode)
   })
 
-  // Track whether the last cursor change came from the keyboard (should scroll)
-  // vs mouse click (already visible — do not scroll).
-  let cursorFromKeyboard = false
-
-  // Scroll to keep the focused row visible on keyboard navigation.
-  // Each row is exactly 1 terminal line tall, so scrollTop = cursor index.
-  // We use scrollTo directly rather than scrollChildIntoView to avoid
-  // dependency on child.y coordinates which may be stale during re-renders.
-  createEffect(() => {
+  // Scroll to keep the cursor row visible only when the cursor changes via
+  // keyboard or mouse click — not when the user is freely scrolling.
+  const scrollToCursor = () => {
     const sb = scrollBox()
     const c = cursor()
-    if (!sb || !cursorFromKeyboard) return
-    cursorFromKeyboard = false
-    // Clamp cursor into the visible viewport: only scroll if cursor is outside.
-    const viewportHeight = (sb as any).viewport?.height ?? 0
-    const currentTop = sb.scrollTop
-    if (c < currentTop) {
-      sb.scrollTo(c)
-    } else if (c >= currentTop + viewportHeight) {
-      sb.scrollTo(c - viewportHeight + 1)
-    }
-  })
+    if (!sb) return
+    queueMicrotask(() => {
+      const viewportHeight = sb.viewport?.height ?? 10
+      if (viewportHeight <= 0) return
+      const currentTop = sb.scrollTop
+      if (c < currentTop) {
+        sb.scrollTo(c)
+      } else if (c >= currentTop + viewportHeight) {
+        sb.scrollTo(c - viewportHeight + 1)
+      }
+    })
+  }
 
   const moveCursor = (delta: number) => {
-    cursorFromKeyboard = true
     setCursor((c) => clampCursor(c, delta, list().length))
+    scrollToCursor()
   }
 
   const toggleSelected = () => {
@@ -153,7 +153,7 @@ export const tui: TuiPlugin = async (api) => {
         title={`Delete ${ids.length} session${ids.length === 1 ? "" : "s"}?`}
         message="This cannot be undone."
         onConfirm={() => executeDeletion(ids)}
-        onCancel={() => api.ui.dialog.clear()}
+        onCancel={() => { api.ui.dialog.clear(); setSelected(new Set<string>()) }}
       />
     ))
   }
@@ -284,6 +284,7 @@ export const tui: TuiPlugin = async (api) => {
           scrollRef={(ref) => setScrollBox(ref)}
           onRowSelect={(index) => {
             setCursor(index)
+            scrollToCursor()
             const sess = list()[index]
             if (sess) setSelected((prev) => toggleSetItem(prev, sess.id))
           }}

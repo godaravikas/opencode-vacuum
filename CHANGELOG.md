@@ -4,7 +4,10 @@ All feature changes to `opencode-vacuum` are documented here.
 
 ---
 
-## v0.1.0 — 2026-08-14
+## v0.2.0 — 2026-08-14
+- Fixed keyboard selection issues that could cause incorrect session deletions
+
+## v0.1.0 — 2026-08-13
 
 **Features**
 - Global session listing across all projects via `/vacuum` command

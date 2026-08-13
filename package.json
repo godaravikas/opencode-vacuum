@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@godaravikas/opencode-vacuum",
-  "version": "0.1.0",
-  "description": "Supercharge OpenCode session management with intuitive multi-select, bulk actions, and effortless cleanup",
+  "version": "0.2.0",
+  "description": "Supercharge OpenCode session management with global session discovery, intuitive keyboard and mouse multi-selection, and effortless bulk deletion.",
   "license": "MIT",
   "author": "Vikas Godara <https://github.com/godaravikas>",
   "homepage": "https://github.com/godaravikas/opencode-vacuum#readme",
