@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Vikas Godara
 // SPDX-License-Identifier: MIT
-import type { TuiPlugin } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiRouteCurrent } from "@opencode-ai/plugin/tui"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { Database } from "bun:sqlite"
-import { createSignal, createMemo, createEffect, on } from "solid-js"
+import { createSignal, createMemo } from "solid-js"
 import { SessionManager } from "./components/SessionManager.js"
 import { clampCursor, toggleSetItem, toggleAllItems, shortDir } from "./utils.js"
 
@@ -106,27 +106,26 @@ export const tui: TuiPlugin = async (api) => {
     return all.filter((s) => sessionDir(s) === mode)
   })
 
-  // Scroll to keep the cursor row visible only when the cursor changes via
-  // keyboard or mouse click — not when the user is freely scrolling.
-  const scrollToCursor = () => {
+  // Scroll to keep the target row visible. Delegates to the scrollbox's own
+  // scrollChildIntoView, which measures the row's real laid-out geometry against
+  // the viewport's inner content area. Computing this manually from
+  // `scrollTop + viewport.height` overestimates the visible row count (the
+  // viewport box height includes borders/padding), so the downward bound fires
+  // too late and the cursor row slips below the fold.
+  // The index is passed directly (not read from the cursor() signal) to avoid
+  // stale signal reads before SolidJS flushes updates.
+  const scrollToCursor = (targetIndex: number) => {
     const sb = scrollBox()
-    const c = cursor()
     if (!sb) return
-    queueMicrotask(() => {
-      const viewportHeight = sb.viewport?.height ?? 10
-      if (viewportHeight <= 0) return
-      const currentTop = sb.scrollTop
-      if (c < currentTop) {
-        sb.scrollTo(c)
-      } else if (c >= currentTop + viewportHeight) {
-        sb.scrollTo(c - viewportHeight + 1)
-      }
-    })
+    const sess = list()[targetIndex]
+    if (!sess) return
+    sb.scrollChildIntoView(`vacuum-row-${sess.id}`)
   }
 
   const moveCursor = (delta: number) => {
-    setCursor((c) => clampCursor(c, delta, list().length))
-    scrollToCursor()
+    const next = clampCursor(cursor(), delta, list().length)
+    setCursor(next)
+    scrollToCursor(next)
   }
 
   const toggleSelected = () => {
@@ -214,6 +213,7 @@ export const tui: TuiPlugin = async (api) => {
   // when opening. This ensures the bindings never consume keystrokes in the
   // chat window.
   let unregisterNav: (() => void) | undefined
+  let previousRoute: TuiRouteCurrent | undefined
 
   const NAV_LAYER = {
     commands: [
@@ -248,6 +248,7 @@ export const tui: TuiPlugin = async (api) => {
   }
 
   const openManager = () => {
+    previousRoute = api.route.current   // capture before navigating away
     resetState()
     fetchSessions()
     unregisterNav = api.keymap.registerLayer(NAV_LAYER)
@@ -259,9 +260,21 @@ export const tui: TuiPlugin = async (api) => {
     resetState()                    // clears sessions → scrollbox renders empty list
     unregisterNav?.()
     unregisterNav = undefined
+    const prev = previousRoute
+    previousRoute = undefined
     // Defer navigation one tick so the empty-list re-render flushes to the
     // terminal before the route switches, preventing scrollback ghost rows.
-    setTimeout(() => api.route.navigate("home"), 0)
+    setTimeout(() => {
+      if (prev && prev.name === "session") {
+        const p = prev as { name: "session"; params: { sessionID: string; prompt?: unknown } }
+        api.route.navigate("session", { sessionID: p.params.sessionID })
+      } else if (prev && prev.name !== "home") {
+        const p = prev as { name: string; params?: Record<string, unknown> }
+        api.route.navigate(p.name, p.params)
+      } else {
+        api.route.navigate("home")
+      }
+    }, 0)
   }
 
   // ── Route ─────────────────────────────────────────────────────────────────
@@ -271,20 +284,20 @@ export const tui: TuiPlugin = async (api) => {
       render: () => (
         <SessionManager
           api={api}
-          list={list()}
-          allCount={sessions().length}
-          projectCount={Array.from(new Set(sessions().map(sessionDir).filter(Boolean))).length}
-          cursor={cursor()}
-          selected={selected()}
-          loading={loading()}
-          loadError={loadError()}
-          deleting={deleting()}
-          filterMode={filterMode()}
-          currentDir={currentDir()}
+          list={list}
+          allCount={() => sessions().length}
+          projectCount={() => Array.from(new Set(sessions().map(sessionDir).filter(Boolean))).length}
+          cursor={cursor}
+          selected={selected}
+          loading={loading}
+          loadError={loadError}
+          deleting={deleting}
+          filterMode={filterMode}
+          currentDir={currentDir}
           scrollRef={(ref) => setScrollBox(ref)}
           onRowSelect={(index) => {
             setCursor(index)
-            scrollToCursor()
+            scrollToCursor(index)
             const sess = list()[index]
             if (sess) setSelected((prev) => toggleSetItem(prev, sess.id))
           }}
