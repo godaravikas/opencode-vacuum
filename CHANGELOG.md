@@ -4,6 +4,11 @@ All feature changes to `opencode-vacuum` are documented here.
 
 ---
 
+## v0.3.0 — 2026-08-26
+- Fixed plugin exit returning to a new session instead of restoring the previously active session
+- Fixed mouse click selection not persisting — scroll position was resetting to the top after selection
+- Fixed keyboard navigation losing the selected item out of view — the list now scrolls to keep the cursor visible
+
 ## v0.2.0 — 2026-08-14
 - Fixed keyboard selection issues that could cause incorrect session deletions
 

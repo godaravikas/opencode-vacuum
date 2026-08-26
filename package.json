@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@godaravikas/opencode-vacuum",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Supercharge OpenCode session management with global session discovery, intuitive keyboard and mouse multi-selection, and effortless bulk deletion.",
   "license": "MIT",
   "author": "Vikas Godara <https://github.com/godaravikas>",
@@ -31,7 +31,7 @@
     "tui"
   ],
   "scripts": {
-    "build": "bun build src/vacuum.ts --outdir dist --target bun --external @opencode-ai/plugin --external @opencode-ai/sdk --external solid-js --external @opentui/solid --external @opentui/core --external @opentui/keymap",
+    "build": "bun run build.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test src/__tests__",
     "test:coverage": "bun test --coverage src/__tests__"
