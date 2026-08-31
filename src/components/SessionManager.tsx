@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Vikas Godara
 // SPDX-License-Identifier: MIT
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
-import type { DbSession } from "../tui.js"
+import type { DisplaySession } from "../tui.js"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { For, Show, createMemo } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
@@ -16,7 +16,7 @@ import pkg from "../../package.json"
 // remounting SessionManager (and its scrollbox) each time.
 interface Props {
   api: TuiPluginApi
-  list: () => DbSession[]
+  list: () => DisplaySession[]
   allCount: () => number
   projectCount: () => number
   cursor: () => number
@@ -38,12 +38,13 @@ export function SessionManager(props: Props) {
   // SessionRow computes its own cols from useTerminalDimensions directly.
   const cols = createMemo(() => calcCols(dimensions().width))
 
-  const total = () => props.list().length
+  const total = () => props.list().filter(({ session }) => !session.parentID).length
   const selCount = () => props.selected().size
 
   const filterLabel = () => {
     const mode = props.filterMode()
     if (mode === "all") return `All projects (${props.projectCount()})`
+    if (mode === "current") return shortDir(props.currentDir()) || "Current project"
     return shortDir(mode)
   }
 
@@ -118,12 +119,14 @@ export function SessionManager(props: Props) {
         ref={props.scrollRef}
       >
         <For each={props.list()}>
-          {(session, index) => (
+          {(item, index) => (
             <SessionRow
-              id={`vacuum-row-${session.id}`}
-              session={session}
+              id={`vacuum-row-${item.session.id}`}
+              session={item.session}
+              depth={item.depth}
+              isSelectable={!item.session.parentID}
               isFocused={index() === props.cursor()}
-              isSelected={props.selected().has(session.id)}
+              isSelected={props.selected().has(item.session.id)}
               theme={theme()}
               onSelect={() => props.onRowSelect?.(index())}
             />

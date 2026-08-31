@@ -2,10 +2,18 @@
 // SPDX-License-Identifier: MIT
 import type { TuiPlugin, TuiRouteCurrent } from "@opencode-ai/plugin/tui"
 import type { ScrollBoxRenderable } from "@opentui/core"
-import { Database } from "bun:sqlite"
+import path from "path"
 import { createSignal, createMemo } from "solid-js"
 import { SessionManager } from "./components/SessionManager.js"
-import { clampCursor, toggleSetItem, toggleAllItems, shortDir } from "./utils.js"
+import {
+  clampCursor,
+  descendantSessionIds,
+  flattenSessionTree,
+  toggleSetItem,
+  toggleAllItems,
+  shortDir,
+  type HierarchicalSession,
+} from "./utils.js"
 
 // Minimal session shape read directly from the OpenCode SQLite database.
 // This is a subset of the full SDK Session type — only what the UI needs.
@@ -15,11 +23,15 @@ export type DbSession = {
   title: string
   slug: string
   cost: number
+  parentID?: string | null
   time_created: number
   time_updated: number
 }
 
+export type DisplaySession = HierarchicalSession<DbSession>
+
 const ROUTE = "vacuum"
+const GLOBAL_FILTER = "__global__"
 
 export const tui: TuiPlugin = async (api) => {
 
@@ -32,49 +44,32 @@ export const tui: TuiPlugin = async (api) => {
     setLoading(true)
     setLoadError(null)
     try {
-      // Attempt to read sessions directly from the OpenCode SQLite database
-      // in read-only mode so we get all sessions across all projects.
-      // Falls back to the v2 API (current-project only) if the db is unavailable.
-      const dbPath = `${api.state.path.state}/opencode.db`
-      let rows: DbSession[] | null = null
+      // OpenCode stores session data in the XDG data directory, not the state
+      // directory exposed by the TUI API. The state path is .../.local/state/opencode,
+      // so move up to .../.local before selecting share/opencode/opencode.db.
+      const dbPath = path.join(
+        path.dirname(path.dirname(api.state.path.state)),
+        "share",
+        "opencode",
+        "opencode.db",
+      )
+      const { Database } = await import("bun:sqlite")
+      const db = new Database(dbPath, { readonly: true, create: false })
       try {
-        const { Database } = await import("bun:sqlite")
-        // WAL mode: open with readonly + wal flags so we don't block the writer
-        const db = new Database(dbPath, { readonly: true, create: false })
-        rows = db.query<DbSession, []>(
-          `SELECT id, directory, title, slug, cost, time_created, time_updated
+        // This only affects this read-only connection and lets SQLite wait
+        // briefly for OpenCode to finish a write transaction.
+        db.exec("PRAGMA busy_timeout = 1000")
+        setSessions(db.query<DbSession, []>(
+          `SELECT id, directory, title, slug, cost, parent_id AS parentID, time_created, time_updated
            FROM session
            WHERE time_archived IS NULL
-           ORDER BY time_updated DESC
-           LIMIT 500`
-        ).all()
+           ORDER BY time_updated DESC`
+        ).all())
+      } finally {
         db.close()
-      } catch (dbErr: any) {
-        // bun:sqlite unavailable or db locked — fall back to API.
-        // Log so the error is visible in OpenCode's debug console.
-        console.warn(`[vacuum] db read failed (${dbPath}): ${dbErr?.message ?? dbErr} — falling back to API`)
-      }
-
-      if (rows !== null) {
-        setSessions(rows)
-      } else {
-        // API fallback: returns only current-project sessions but is always available.
-        // Normalize the API shape into our flat DbSession shape.
-        const result = await (api.client.session as any).list({ scope: "project", limit: 500 })
-        const raw: any[] = Array.isArray(result?.data)
-          ? result.data
-          : Array.isArray(result?.data?.data) ? result.data.data : []
-        setSessions(raw.map((s: any): DbSession => ({
-          id: s.id,
-          directory: s.directory ?? s.location?.directory ?? "",
-          title: s.title ?? "",
-          slug: s.slug ?? "",
-          cost: s.cost ?? 0,
-          time_created: s.time?.created ?? s.time_created ?? 0,
-          time_updated: s.time?.updated ?? s.time_updated ?? 0,
-        })))
       }
     } catch (e: any) {
+      console.warn(`[vacuum] session load failed: ${e?.message ?? e}`)
       setLoadError(e?.message ?? "Failed to load sessions")
       setSessions([])
     } finally {
@@ -98,13 +93,20 @@ export const tui: TuiPlugin = async (api) => {
 
   const currentDir = () => api.state.path.directory
 
-  const list = createMemo<DbSession[]>(() => {
+  const list = createMemo<DisplaySession[]>(() => {
     const all = sessions()
     const mode = filterMode()
-    if (mode === "all") return all
-    if (mode === "current") return all.filter((s) => sessionDir(s) === currentDir())
-    return all.filter((s) => sessionDir(s) === mode)
+    const filtered = mode === "all"
+      ? all
+      : mode === "current"
+        ? all.filter((s) => sessionDir(s) === currentDir())
+        : mode === GLOBAL_FILTER
+          ? all.filter((s) => !sessionDir(s))
+          : all.filter((s) => sessionDir(s) === mode)
+    return flattenSessionTree(filtered)
   })
+
+  const parentRows = (items: DisplaySession[]) => items.filter(({ session }) => !session.parentID)
 
   // Scroll to keep the target row visible. Delegates to the scrollbox's own
   // scrollChildIntoView, which measures the row's real laid-out geometry against
@@ -117,9 +119,9 @@ export const tui: TuiPlugin = async (api) => {
   const scrollToCursor = (targetIndex: number) => {
     const sb = scrollBox()
     if (!sb) return
-    const sess = list()[targetIndex]
-    if (!sess) return
-    sb.scrollChildIntoView(`vacuum-row-${sess.id}`)
+    const item = list()[targetIndex]
+    if (!item) return
+    sb.scrollChildIntoView(`vacuum-row-${item.session.id}`)
   }
 
   const moveCursor = (delta: number) => {
@@ -130,13 +132,14 @@ export const tui: TuiPlugin = async (api) => {
 
   const toggleSelected = () => {
     const sess = list()[cursor()]
-    if (sess) setSelected((prev) => toggleSetItem(prev, sess.id))
+    if (sess?.session.parentID) return
+    if (sess) setSelected((prev) => toggleSetItem(prev, sess.session.id))
   }
 
   const toggleAll = () => {
     const items = list()
     if (!items.length) return
-    setSelected((prev) => toggleAllItems(prev, items.map((s) => s.id)))
+    setSelected((prev) => toggleAllItems(prev, parentRows(items).map(({ session }) => session.id)))
   }
 
   // ── Deletion ──────────────────────────────────────────────────────────────
@@ -144,13 +147,18 @@ export const tui: TuiPlugin = async (api) => {
     // Only delete sessions that are currently visible in the filtered list.
     // This prevents stale selections from a previous filter mode from being
     // deleted when the filter changes.
-    const visible = new Set(list().map((s) => s.id))
-    const ids = Array.from(selected()).filter((id) => visible.has(id))
+    const visible = new Set(parentRows(list()).map(({ session }) => session.id))
+    const roots = Array.from(selected()).filter((id) => visible.has(id))
+    const ids = roots.flatMap((id) => [...descendantSessionIds(sessions(), id), id])
     if (!ids.length) return
+    const subagentCount = ids.length - roots.length
+    const rootLabel = `${roots.length} session${roots.length === 1 ? "" : "s"}`
+    const subagentLabel = roots.length === 1 ? "its subagents" : "their subagents"
+    const totalLabel = `${ids.length} session${ids.length === 1 ? "" : "s"}`
     api.ui.dialog.replace(() => (
       <api.ui.DialogConfirm
-        title={`Delete ${ids.length} session${ids.length === 1 ? "" : "s"}?`}
-        message="This cannot be undone."
+        title={`Delete ${rootLabel}${subagentCount > 0 ? ` and ${subagentLabel}` : ""}?`}
+        message={`${totalLabel} will be deleted. This cannot be undone.`}
         onConfirm={() => executeDeletion(ids)}
         onCancel={() => { api.ui.dialog.clear(); setSelected(new Set<string>()) }}
       />
@@ -184,28 +192,44 @@ export const tui: TuiPlugin = async (api) => {
 
   // ── Filter picker ─────────────────────────────────────────────────────────
   const openFilter = () => {
-    const dirs = Array.from(new Set(sessions().map(sessionDir).filter(Boolean))).sort()
-    const cur = currentDir()
-    api.ui.dialog.replace(() => (
-      <api.ui.DialogSelect
-        title="Filter by project"
-        options={[
-          { title: "All sessions", value: "all", description: `${sessions().length} sessions across ${dirs.length} project${dirs.length === 1 ? "" : "s"}` },
-          ...dirs.map((d) => ({
-            title: shortDir(d),
-            value: d,
-            description: d === cur ? "(current)" : undefined,
-          })),
-        ]}
-        current={filterMode()}
-        onSelect={(opt) => {
-          setFilterMode(opt.value as string)
-          setCursor(0)
-          setSelected(new Set<string>())
-          api.ui.dialog.clear()
-        }}
-      />
-    ))
+    try {
+      const dirs = Array.from(new Set(sessions().map(sessionDir).filter(Boolean))).sort()
+      const cur = currentDir()
+      const counts = new Map<string, number>()
+      for (const session of sessions()) {
+        if (!session.parentID) counts.set(sessionDir(session), (counts.get(sessionDir(session)) ?? 0) + 1)
+      }
+      const parentCount = parentRows(flattenSessionTree(sessions())).length
+      api.ui.dialog.replace(() => (
+        <api.ui.DialogSelect
+          title="Filter by project"
+          options={[
+            { title: "All sessions", value: "all", description: `${parentCount} session${parentCount === 1 ? "" : "s"} across ${dirs.length} project${dirs.length === 1 ? "" : "s"}` },
+            ...(counts.has("") ? [{
+              title: "Global sessions",
+              value: GLOBAL_FILTER,
+              description: `${counts.get("")} session${counts.get("") === 1 ? "" : "s"}`,
+            }] : []),
+            ...dirs.map((d) => ({
+              title: shortDir(d),
+              value: d,
+              description: `${counts.get(d) ?? 0} session${counts.get(d) === 1 ? "" : "s"}${d === cur ? " · current" : ""}`,
+            })),
+          ]}
+          current={filterMode() === "current" ? currentDir() : filterMode()}
+          onSelect={(opt) => {
+            setFilterMode(opt.value as string)
+            setCursor(0)
+            setSelected(new Set<string>())
+            api.ui.dialog.clear()
+          }}
+        />
+      ))
+      api.ui.dialog.setSize("xlarge")
+    } catch (e: any) {
+      console.error(`[vacuum] openFilter failed: ${e?.message ?? e}`)
+      api.ui.toast({ variant: "warning", message: `Filter error: ${e?.message ?? "unknown error"}` })
+    }
   }
 
   // ── Nav keymap — registered only while on the vacuum route ──────────────
@@ -285,7 +309,7 @@ export const tui: TuiPlugin = async (api) => {
         <SessionManager
           api={api}
           list={list}
-          allCount={() => sessions().length}
+          allCount={() => parentRows(flattenSessionTree(sessions())).length}
           projectCount={() => Array.from(new Set(sessions().map(sessionDir).filter(Boolean))).length}
           cursor={cursor}
           selected={selected}
@@ -299,7 +323,8 @@ export const tui: TuiPlugin = async (api) => {
             setCursor(index)
             scrollToCursor(index)
             const sess = list()[index]
-            if (sess) setSelected((prev) => toggleSetItem(prev, sess.id))
+            if (sess?.session.parentID) return
+            if (sess) setSelected((prev) => toggleSetItem(prev, sess.session.id))
           }}
         />
       ),

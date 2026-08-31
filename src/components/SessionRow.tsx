@@ -23,6 +23,8 @@ export function calcCols(w: number): ColWidths {
 interface Props {
   id: string
   session: DbSession
+  depth: number
+  isSelectable: boolean
   isFocused: boolean
   isSelected: boolean
   theme: TuiThemeCurrent
@@ -36,6 +38,7 @@ export function SessionRow(props: Props) {
   const cols = createMemo(() => calcCols(dimensions().width))
   // All values derived reactively from props — never destructure in SolidJS.
   const indicator = () => props.isSelected ? "[x]" : "[ ]"
+  const indent = () => `${"  ".repeat(props.depth)}${props.depth > 0 ? "> " : ""}`
   const title = () => props.session.title || "(untitled)"
   const project = () => shortDir(props.session.directory) || "(unknown)"
   const updated = () => formatUpdated(props.session.time_updated)
@@ -66,17 +69,18 @@ export function SessionRow(props: Props) {
       paddingRight={1}
       backgroundColor={bgColor()}
       onMouseDown={(event: any) => {
-        if (event.button === 0) {
+        if (event.button === 0 && props.isSelectable) {
           event.stopPropagation()
           props.onSelect?.()
         }
       }}
     >
       {/* indicator */}
-      <text fg={indicatorFg()}>{indicator()} </text>
+      <text fg={indicatorFg()}>{props.isSelectable ? indicator() : "   "}</text>
 
       {/* session title — fixed width */}
-      <box width={cols().session} flexShrink={0} overflow="hidden">
+      <box width={cols().session} flexShrink={0} flexDirection="row" overflow="hidden">
+        <text fg={rowFg()}>{indent()}</text>
         <text fg={rowFg()}>{title()}</text>
       </box>
 

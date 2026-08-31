@@ -60,15 +60,28 @@ Session manager screen — current project filter active, two sessions selected:
  2 selected  ↑↓/jk move · Space select · Ctrl+A all · f filter · d delete · Esc close
 ```
 
-Confirmation dialog before bulk delete:
+Confirmation dialog when selected sessions does not include subagents:
 
 ```text
  ┌──────────────────────────────────────┐
  │  Delete 2 sessions?                  │
+ │  2 sessions will be deleted.         │
  │  This cannot be undone.              │
  │                                      │
  │           < Cancel >  < Confirm >    │
  └──────────────────────────────────────┘
+```
+
+Confirmation dialog when selected sessions include subagents:
+
+```text
+ ┌──────────────────────────────────────────────────┐
+ │  Delete 2 sessions and their subagents?          │
+ │  5 sessions will be deleted.                     │
+ │  This cannot be undone.                          │
+ │                                                  │
+ │                 < Cancel >  < Confirm >          │
+ └──────────────────────────────────────────────────┘
 ```
 
 Project filter picker:
