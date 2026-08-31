@@ -1,7 +1,15 @@
 // Copyright (c) 2026 Vikas Godara
 // SPDX-License-Identifier: MIT
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
-import { formatUpdated, shortDir, clampCursor, toggleSetItem, toggleAllItems } from "../utils.js"
+import {
+  formatUpdated,
+  shortDir,
+  clampCursor,
+  toggleSetItem,
+  toggleAllItems,
+  flattenSessionTree,
+  descendantSessionIds,
+} from "../utils.js"
 
 // ── formatUpdated ─────────────────────────────────────────────────────────────
 
@@ -149,5 +157,35 @@ describe("toggleAllItems", () => {
     const original = new Set(["a"])
     toggleAllItems(original, all)
     expect(original.size).toBe(1)
+  })
+})
+
+// ── session hierarchy ────────────────────────────────────────────────────────
+
+describe("session hierarchy", () => {
+  const sessions = [
+    { id: "child-a", parentID: "parent" },
+    { id: "parent" },
+    { id: "child-b", parentID: "parent" },
+    { id: "other" },
+  ]
+
+  it("flattens children directly beneath their parent", () => {
+    expect(flattenSessionTree(sessions).map(({ session, depth }) => [session.id, depth])).toEqual([
+      ["parent", 0],
+      ["child-a", 1],
+      ["child-b", 1],
+      ["other", 0],
+    ])
+  })
+
+  it("returns descendants for cascade deletion", () => {
+    expect(descendantSessionIds(sessions, "parent")).toEqual(["child-a", "child-b"])
+  })
+
+  it("keeps sessions with missing parents visible", () => {
+    expect(flattenSessionTree([{ id: "orphan", parentID: "missing" }])).toEqual([
+      { session: { id: "orphan", parentID: "missing" }, depth: 0 },
+    ])
   })
 })

@@ -70,3 +70,66 @@ export function toggleAllItems<T>(current: Set<T>, all: T[]): Set<T> {
   if (current.size === all.length) return new Set<T>()
   return new Set<T>(all)
 }
+
+export type ParentSession = {
+  id: string
+  parentID?: string | null
+}
+
+export type HierarchicalSession<T> = {
+  session: T
+  depth: number
+}
+
+/** Flatten sessions in parent-first order while preserving sibling order. */
+export function flattenSessionTree<T extends ParentSession>(sessions: T[]): HierarchicalSession<T>[] {
+  const byParent = new Map<string, T[]>()
+  const byId = new Set(sessions.map((session) => session.id))
+
+  for (const session of sessions) {
+    if (!session.parentID || !byId.has(session.parentID)) continue
+    const children = byParent.get(session.parentID) ?? []
+    children.push(session)
+    byParent.set(session.parentID, children)
+  }
+
+  const flattened: HierarchicalSession<T>[] = []
+  const visited = new Set<string>()
+  const append = (session: T, depth: number) => {
+    if (visited.has(session.id)) return
+    visited.add(session.id)
+    flattened.push({ session, depth })
+    for (const child of byParent.get(session.id) ?? []) append(child, depth + 1)
+  }
+
+  for (const session of sessions) {
+    if (!session.parentID || !byId.has(session.parentID)) append(session, 0)
+  }
+  for (const session of sessions) append(session, 0)
+
+  return flattened
+}
+
+/** Return descendants before their parent for safe deletion ordering. */
+export function descendantSessionIds<T extends ParentSession>(sessions: T[], parentID: string): string[] {
+  const byParent = new Map<string, T[]>()
+  for (const session of sessions) {
+    if (!session.parentID) continue
+    const children = byParent.get(session.parentID) ?? []
+    children.push(session)
+    byParent.set(session.parentID, children)
+  }
+
+  const descendants: string[] = []
+  const visited = new Set<string>()
+  const visit = (id: string) => {
+    for (const child of byParent.get(id) ?? []) {
+      if (visited.has(child.id)) continue
+      visited.add(child.id)
+      descendants.push(child.id)
+      visit(child.id)
+    }
+  }
+  visit(parentID)
+  return descendants
+}

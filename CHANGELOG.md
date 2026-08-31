@@ -4,6 +4,13 @@ All feature changes to `opencode-vacuum` are documented here.
 
 ---
 
+## v0.4.0 — 2026-08-31
+- Displayed parent and subagent sessions in an indented hierarchy
+- Counted only parent sessions in project and session totals
+- Restricted selection to parent sessions and deleted their subagent sessions together
+- Increased the project filter dialog width so full project paths are easier to see
+- Clarified delete confirmation messages to distinguish selected sessions from their subagents and show the total deletion count
+
 ## v0.3.0 — 2026-08-26
 - Fixed plugin exit returning to a new session instead of restoring the previously active session
 - Fixed mouse click selection not persisting — scroll position was resetting to the top after selection
