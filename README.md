@@ -102,6 +102,14 @@ Project filter picker:
 - A confirmation dialog is shown before any deletion executes.
 - When all sessions in a filtered view are deleted, automatically falls back to showing all sessions.
 
+## How to upgrade
+
+Clear the plugin cache and OpenCode will fetch the latest version automatically on next startup:
+
+```bash
+rm -rf ~/.cache/opencode/packages/@godaravikas
+```
+
 ## Contributing
 
 Source code: [github.com/godaravikas/opencode-vacuum](https://github.com/godaravikas/opencode-vacuum)
